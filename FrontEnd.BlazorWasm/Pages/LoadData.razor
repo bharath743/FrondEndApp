@@ -1,0 +1,149 @@
+﻿@page "/load-data"
+@using System.Collections.ObjectModel
+@using Telerik.Blazor
+@using Telerik.DataSource
+
+@layout SecondaryLayout
+
+@inject IJSRuntime jsInterop
+@inject IServerService server
+@inject IPdfExportationService pdf
+@inject NavigationManager navigator
+
+<PageTitle>Fetch-data</PageTitle>
+
+<table id="testata" style="width: 100%;">
+    <tbody>
+        <tr>
+            <td style="width: 40%;"><img src="/img/logoDeltaP.gif" alt="Logo"></td>
+            <td style="text-align: left;">
+                <span style="font-size: 2rem;color: #003579;">Interventi manutenzione</span>
+            </td>
+            <td style="text-align: right;width:110px">
+                <button id="btLogoff" type="button" class="btn" @onclick="LogOutUserAndCleanLocalStorage" style="height: 24px; width: 94px;">Esci</button>
+            </td>
+        </tr>
+    </tbody>
+</table>
+<div class="container">
+    @*<button class="btn btn-primary p-4" @onclick="@(()=>ExportToPDF())"><span class="oi oi-print">Export PDF</span></button>*@
+    @*<button class="btn btn-primary text-white p-4" @onclick="LogOutUserAndCleanLocalStorage">Log out</button>*@
+
+    @if (!string.IsNullOrWhiteSpace(Error))
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            @Error
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close" @onclick="LogOutUserAndCleanLocalStorage"></button>
+        </div>
+    }
+    <div id="divDettaglio" class="container">
+        <div class="panel-heading">
+            <h2>Rapporto intervento</h2>
+        </div>
+        @if (GetValues is null)
+        {
+            <p class="text-sm-center">Loading...</p>
+        }
+        <table id="dettaglio">
+            <colgroup>
+                <col class="label" />
+                <col class="content" />
+            </colgroup>
+        </table>
+        <TelerikGrid Data="@GetValues" TItem="Value" Pageable="true"
+                     Sortable="true" FilterMode="@GridFilterMode.FilterMenu" OnRowClick="OnRowClicked">
+            <GridColumns>
+                <GridColumn Field="@nameof(Value.codIntervento)" Title="Code Intervento" />
+                <GridColumn Field="@nameof(Value.dataIntervento)" Title="Data Intervento" />
+                <GridColumn Field="@nameof(Value.firmatario)" title="Firmatario" />
+                <GridColumn Field="@nameof(Value.luogoIntervento)" title="Luogo Intervento" />
+                <GridColumn Field="@nameof(Value.statoFattura)" title="Stato Fattura" />
+            </GridColumns>
+        </TelerikGrid>
+    </div>
+</div>
+<DetailsPage WindowVisible=showModal Value=selectedProduct />
+
+@code {
+
+    private ObservableCollection<Products> GetProducts = default!;
+    private ObservableCollection<Value> GetValues = default!;
+    private bool showModal = false;
+    //private Products selectedProduct = default!;
+    private Value selectedProduct = default!;
+    private string Error = string.Empty;
+
+    private async Task ReadData(GridReadEventArgs readEventArgs)
+    {
+        var token = await jsInterop.InvokeAsync<string>("getData", "token");
+        if (!string.IsNullOrWhiteSpace(token))
+        {
+            var data = await server.GetODataAsync(token);
+            if (data is not null)
+            {
+                readEventArgs.Data = data.value;
+                readEventArgs.Total = data.value.Count();
+            }
+        }
+    }
+
+    private async Task OnRowClicked(GridRowClickEventArgs rowClickEventArgs)
+    {
+        var item = (Value)rowClickEventArgs.Item;
+        var token = await jsInterop.InvokeAsync<string>("getData", "token");
+        if (!string.IsNullOrWhiteSpace(token))
+        {
+            //this is just an api call simulation
+            //TODO: call an api and use to result
+            if (item is not null)
+            {
+                //var result = await server.GetProductsDetailsAsync(token, item.RowID);
+                selectedProduct = item;
+                showModal = true;
+            }
+            //js to display a alert
+            //await jsInterop.InvokeVoidAsync($"callAlert", $"**{item.Name}** has been selected");
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var token = await jsInterop.InvokeAsync<string>("getData", "token");
+        if (!string.IsNullOrWhiteSpace(token))
+        {
+            var response = await server.GetODataAsync(token);
+            GetValues = new ObservableCollection<Value>(response.value);
+        }
+        else
+        {
+            //tell the user that there's something wrong with data fetching.
+            Error = "user is not connected. the token is missing";
+            Console.WriteLine("user is not connected. the token is missing");
+            LogOutUserAndCleanLocalStorage();
+        }
+    }
+
+    private async void GetDetail(Products products)
+    {
+        var token = await jsInterop.InvokeAsync<string>("getData", "token");
+        if (!string.IsNullOrWhiteSpace(token))
+        {
+            //this is just an api call simulation
+            //TODO: call an api and use to result.
+            // var result = await server.GetProductsDetailsAsync(token, products.Id);
+            //js to display a alert
+            await jsInterop.InvokeVoidAsync($"callAlert", $"**{products.Name}** has been selected");
+        }
+    }
+
+    void ExportToPDF()
+    {
+        pdf.ExportPdf(GetProducts, $"report-{Guid.NewGuid()}.pdf", $"The report from {DateTime.Now}", "Products");
+    }
+
+    async void LogOutUserAndCleanLocalStorage()
+    {
+        await jsInterop.InvokeVoidAsync("clearStorage");
+        navigator.NavigateTo("/");
+    }
+    }
